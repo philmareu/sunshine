@@ -1,0 +1,46 @@
+# One grouped pull request a month for each ecosystem.
+# Security fixes don't wait for this schedule: with Dependabot security updates
+# turned on in the repository settings, they get their own pull requests.
+version: 2
+
+updates:
+  - package-ecosystem: composer
+    directory: /
+    schedule:
+      interval: monthly
+    # Update composer.lock inside the constraints in composer.json, like
+    # `composer update`. Major upgrades (Laravel, Filament) are done by hand.
+    versioning-strategy: lockfile-only
+    open-pull-requests-limit: 1
+    # Skip releases less than a week old.
+    cooldown:
+      default-days: 7
+    groups:
+      composer:
+        patterns: ['*']
+
+  # Sunshine's browser (Playwright), which scans run on the server.
+  - package-ecosystem: npm
+    directory: /browser
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 1
+    cooldown:
+      default-days: 7
+    groups:
+      browser:
+        patterns: ['*']
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 1
+    cooldown:
+      default-days: 7
+    groups:
+      github-actions:
+        patterns: ['*']
+
+# The root package.json is left out on purpose. It only holds build tools, and
+# Sunshine's pages don't load anything they build.

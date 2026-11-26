@@ -52,7 +52,7 @@ Set a spending limit on your Anthropic account.
 
 ## Requirements
 
-- PHP 8.3 or newer, with the extensions Laravel needs, plus `pcntl` (so the queue worker can stop jobs that run too long) and `proc_open` (pages are read in parallel processes).
+- PHP 8.4 or newer, with the extensions Laravel needs, plus `pcntl` (so the queue worker can stop jobs that run too long) and `proc_open` (pages are read in parallel processes).
 - Composer.
 - Node.js 20.19 or newer, for Sunshine's browser (`browser/`, Playwright with headless Chromium).
 - MySQL. Sunshine is developed and run on MySQL. The test suite runs on SQLite, but real use on SQLite is untested.
