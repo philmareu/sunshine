@@ -1,0 +1,9 @@
+{
+    "name": "sunshine-browser",
+    "private": true,
+    "type": "module",
+    "description": "Renders pages that fill in their events with JavaScript, for Sunshine's page reads (app/Ai/PageBrowser.php).",
+    "dependencies": {
+        "playwright": "1.64.1"
+    }
+}
