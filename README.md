@@ -28,7 +28,7 @@ Sunshine is a personal project, shared as-is. It is built for one family's use a
 - Activities: each thing to do gathers every date it was found on, with notes, photos and a checklist. You can avoid an activity, so it is never suggested again, or merge duplicates.
 - A short summary of the family's taste, rewritten about once a week from what you marked.
 - A Usage page with the tokens, web searches, pages fetched and estimated cost of every AI run.
-- An MCP server, so Claude Code can read your preferences, manage watched pages and run searches for you.
+- An MCP server, so Claude (on the web, desktop, phone or in Claude Code) can tell you what you have planned today, read your preferences, manage watched pages and run searches for you.
 
 The whole interface is a [Filament](https://filamentphp.com) panel.
 
@@ -121,7 +121,10 @@ The rest of `.env` is standard Laravel. Sessions, cache and the queue use the da
 
 ```bash
 php artisan migrate --force
+php artisan passport:keys
 ```
+
+`passport:keys` makes the keys that sign Claude's sign-ins (see [Connecting Claude](#connecting-claude)), in `storage/oauth-*.key`. Make them once and keep them: new keys sign everyone out of Claude. If `storage/` doesn't persist between deploys, set `PASSPORT_PRIVATE_KEY` and `PASSPORT_PUBLIC_KEY` in `.env` instead.
 
 ### 4. Set up Sunshine's browser
 
@@ -208,28 +211,29 @@ Sign in, then:
 3. **Upcoming.** Press "Check now" to run a scan right away. It takes a minute or two for each place. New events appear on Upcoming.
 4. Mark what you find. Later runs learn from it.
 
-## Connecting Claude Code
+## Connecting Claude
 
-Sunshine runs an MCP server at `/mcp`. Claude Code can use it to read your preferences, list, check, add and remove watched pages, start and read ad hoc searches, read scans, and list what is on Upcoming. It acts as the user whose token it uses.
+Sunshine runs an MCP server at `/mcp`. Claude can use it to tell you what you have planned (today, the next few hours or the week, with your notes and checklist for each), list what is on Upcoming, read your preferences, list, check, add and remove watched pages, start and read ad hoc searches, and read scans. It acts as the user who approved it.
 
-1. Open the **Claude** page in Sunshine ("Connect Claude").
-2. Press **Create token**. The token is shown once.
-3. Copy the command it shows and run it in a terminal. It looks like this:
+Claude signs in with OAuth: you log in to Sunshine and approve it, and it never sees your password. The **Claude** page in Sunshine ("Connect Claude") shows the server URL and the Claude Code command, and lists the apps you have connected, each with a **Disconnect** button.
 
-   ```bash
-   claude mcp add --transport http --scope user sunshine https://sunshine.example.com/mcp --header "Authorization: Bearer <token>"
-   ```
+- **Claude on the web, desktop or phone:** in Claude's settings, add a custom connector and paste the server URL, such as `https://sunshine.example.com/mcp`. Claude sends you to Sunshine to log in and approve it.
+- **Claude Code:** run
 
-4. Start a new Claude Code session.
+  ```bash
+  claude mcp add --transport http --scope user sunshine https://sunshine.example.com/mcp
+  ```
 
-Each user has one token. Pressing **Replace token** ends the old one.
+  then use `/mcp` in a Claude Code session to sign in.
+
+Only Claude's own addresses (`claude.ai`, `claude.com`) and local callbacks (`http://localhost`, for Claude Code) can sign in. To allow another MCP client, add its redirect domain to `redirect_domains` in `config/mcp.php`.
 
 ## Security notes
 
 - **Sunshine fetches web pages from your server.** The scan reads watched pages, follows their redirects, and can open them in headless Chromium. It only connects to public addresses, checks each redirect, follows robots.txt, and the browser only reaches the web through a proxy that allows public addresses on ports 80 and 443. Even so, run it somewhere where outgoing web requests to arbitrary sites are acceptable.
 - **Accounts.** There is no sign-up page, and every account in the database can use the app. Only create accounts for people you trust with your Anthropic bill.
 - **Production settings.** Set `APP_ENV=production`, `APP_DEBUG=false` and `APP_URL` to the address you serve it at, and install with `composer install --no-dev`. Outside the `local` environment, Sunshine only answers requests for `APP_URL`'s host (and its subdomains).
-- **HTTPS.** Serve the app over HTTPS. MCP tokens are sent as bearer tokens on every request.
+- **HTTPS.** Serve the app over HTTPS. Claude's access tokens are sent as bearer tokens on every request.
 - **Secrets.** Keep `.env` out of the web root and out of version control.
 
 ## Local development

@@ -12,19 +12,23 @@ use Laravel\Mcp\Server\Attributes\Description;
 use Laravel\Mcp\Server\Tool;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
-#[Description('List what the family sees on Upcoming: every event their scans found from today on, across all scans, by date, with how many there are in each city. Each event says how the family marked it and whether they can\'t make it (Upcoming hides those by default), names the scan that found it and its activity, so the same thing found twice under different titles shows up side by side. Give a city to list only its events.')]
+#[Description('List what the family sees on Upcoming: every event their scans found from today on, across all scans, by date, with how many there are in each city. Each event says how the family marked it and whether they can\'t make it (Upcoming hides those by default), names the scan that found it and its activity, so the same thing found twice under different titles shows up side by side. Give a city to list only its events, or a number of days to list only the next few days: 1 for just today. Gives the time now where they live.')]
 #[IsReadOnly]
 class ListUpcoming extends Tool
 {
     public function handle(Request $request): Response
     {
-        $validated = $request->validate(['city' => ['nullable', 'string', 'max:255']]);
+        $validated = $request->validate([
+            'city' => ['nullable', 'string', 'max:255'],
+            'days' => ['nullable', 'integer', 'min:1', 'max:366'],
+        ]);
 
         /** @var User $user */
         $user = $request->user();
 
         $events = $user->discoveredEvents()
             ->whereDate('events.starts_on', '>=', $user->today())
+            ->when($validated['days'] ?? null, fn ($events, int $days) => $events->whereDate('events.starts_on', '<', $user->today()->addDays($days)))
             ->orderBy('events.starts_on')
             ->orderBy('events.city')
             ->orderBy('events.title')
@@ -34,6 +38,7 @@ class ListUpcoming extends Tool
 
         return Response::json([
             'today' => $user->today()->toDateString(),
+            'now' => now($user->timezone)->format('l, Y-m-d H:i'),
             'by_city' => $events->countBy(fn (Event $event): string => $event->city ?? 'No city')->sortDesc()->all(),
             'events' => $events
                 ->filter(fn (Event $event): bool => blank($city) || strcasecmp((string) $event->city, $city) === 0)
@@ -63,6 +68,7 @@ class ListUpcoming extends Tool
     {
         return [
             'city' => $schema->string()->description('Only list events in this town or city, as by_city names it.'),
+            'days' => $schema->integer()->description('Only list the next this many days, starting today: 1 for just today.'),
         ];
     }
 }

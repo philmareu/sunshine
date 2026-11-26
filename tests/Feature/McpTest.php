@@ -4,7 +4,6 @@ use App\Ai\PageCheck;
 use App\Enums\EventStatus;
 use App\Enums\SearchKind;
 use App\Enums\SearchStatus;
-use App\Filament\Pages\Claude;
 use App\Jobs\RunSearch;
 use App\Mcp\Servers\SunshineServer;
 use App\Mcp\Tools\AddSource;
@@ -13,6 +12,7 @@ use App\Mcp\Tools\CreateSearch;
 use App\Mcp\Tools\GetPreferences;
 use App\Mcp\Tools\GetScan;
 use App\Mcp\Tools\GetSearch;
+use App\Mcp\Tools\ListPlans;
 use App\Mcp\Tools\ListSearches;
 use App\Mcp\Tools\ListSources;
 use App\Mcp\Tools\ListUpcoming;
@@ -26,8 +26,6 @@ use Carbon\CarbonInterface;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Facades\Queue;
-use Illuminate\Testing\TestResponse;
-use Livewire\Livewire;
 
 beforeEach(function () {
     $this->travelTo('2026-11-01 09:00:00');
@@ -36,57 +34,6 @@ beforeEach(function () {
 
 afterEach(function () {
     PageCheck::resolveHostsUsing(null);
-});
-
-/** An MCP initialize call, as Claude Code sends it. */
-function initializeMcp(?string $token): TestResponse
-{
-    return test()->withHeaders(array_filter([
-        'Accept' => 'application/json, text/event-stream',
-        'Authorization' => $token ? "Bearer {$token}" : null,
-    ]))->postJson('/mcp', [
-        'jsonrpc' => '2.0',
-        'id' => 1,
-        'method' => 'initialize',
-        'params' => ['protocolVersion' => '2025-06-18', 'capabilities' => (object) [], 'clientInfo' => ['name' => 'test', 'version' => '1']],
-    ]);
-}
-
-describe('the server', function () {
-    it('turns away a request without a token', function () {
-        initializeMcp(null)->assertUnauthorized();
-    });
-
-    it('serves a user\'s token', function () {
-        initializeMcp($this->user->createToken(Claude::TOKEN_NAME)->plainTextToken)
-            ->assertOk()
-            ->assertJsonPath('result.serverInfo.name', 'sunshine');
-    });
-
-    it('makes the first token on the Connect Claude page straight away', function () {
-        $this->actingAs($this->user);
-
-        Livewire::test(Claude::class)
-            ->mountAction('newToken')
-            ->assertActionNotMounted('newToken')
-            ->assertSee('claude mcp add --transport http --scope user sunshine');
-
-        expect($this->user->tokens()->count())->toBe(1);
-    });
-
-    it('asks before replacing a token, and the new one ends the old', function () {
-        $this->actingAs($this->user);
-        $old = $this->user->createToken(Claude::TOKEN_NAME);
-
-        Livewire::test(Claude::class)
-            ->mountAction('newToken')
-            ->assertActionMounted('newToken')
-            ->assertDontSee('claude mcp add')
-            ->callMountedAction()
-            ->assertSee('claude mcp add --transport http --scope user sunshine');
-
-        expect($this->user->tokens()->pluck('id')->all())->toHaveCount(1)->not->toContain($old->accessToken->id);
-    });
 });
 
 describe('preferences and sources', function () {
@@ -388,5 +335,63 @@ describe('scans', function () {
         SunshineServer::actingAs($this->user)->tool(ListUpcoming::class, ['city' => 'maple falls'])
             ->assertSee(['"by_city":{"Maple Falls":2,"Riverton":1}', '"title":"Holiday Lights"'])
             ->assertDontSee('"title":"Brick Builders Club"');
+    });
+});
+
+describe('plans', function () {
+    beforeEach(function () {
+        $this->user->update(['timezone' => 'America/Los_Angeles']);
+        $this->travelTo('2026-11-03 22:30:00');
+    });
+
+    it('lists what they plan to go to from today, with the time now where they live and what to bring', function () {
+        $search = Search::factory()->for($this->user)->create();
+        $storytime = Event::factory()->for($search)->marked(EventStatus::Interested)->create(['title' => 'Toddler Storytime', 'starts_on' => '2026-11-03', 'time' => '4:00 PM']);
+        $storytime->activity->notes()->create(['body' => 'Park on the north side']);
+        $bag = $storytime->activity->checklistItems()->create(['label' => 'Library card', 'sort' => 1]);
+        $storytime->activity->checklistItems()->create(['label' => 'Snacks', 'sort' => 2]);
+        $storytime->update(['checked_items' => [$bag->id]]);
+        Event::factory()->for($search)->marked(EventStatus::Went)->create(['activity_id' => $storytime->activity_id, 'starts_on' => '2026-10-20', 'rating' => 4, 'retrospective' => 'Loved the songs']);
+
+        Event::factory()->for(Search::factory()->for($this->user)->create(['kind' => SearchKind::Discovery]))->marked(EventStatus::Interested)->create(['title' => 'Holiday Lights', 'starts_on' => '2026-11-09']);
+        Event::factory()->for($search)->marked(EventStatus::Interested)->create(['title' => 'Next month', 'starts_on' => '2026-11-10']);
+        Event::factory()->for($search)->marked(EventStatus::Interested)->create(['title' => 'Yesterday', 'starts_on' => '2026-11-02']);
+        Event::factory()->for($search)->marked(EventStatus::Interested)->create(['title' => 'Can\'t make it', 'starts_on' => '2026-11-04', 'hidden_at' => now()]);
+        Event::factory()->for($search)->create(['title' => 'Not marked', 'starts_on' => '2026-11-04']);
+        Event::factory()->for(Search::factory()->create())->marked(EventStatus::Interested)->create(['title' => 'Someone else\'s plan', 'starts_on' => '2026-11-04']);
+
+        SunshineServer::actingAs($this->user)->tool(ListPlans::class)
+            ->assertOk()
+            ->assertSee([
+                '"now":"Tuesday, 2026-11-03 14:30"', '"through":"2026-11-09"',
+                '"date":"Tuesday, 2026-11-03","time":"4:00 PM","title":"Toddler Storytime"',
+                '"notes":["Park on the north side"]',
+                '"checklist":[{"item":"Library card","done":true},{"item":"Snacks","done":false}]',
+                '"last_visit":{"date":"2026-10-20","rating":4,"retrospective":"Loved the songs"}',
+                '"title":"Holiday Lights"',
+            ])
+            ->assertDontSee(['Next month', 'Yesterday', 'Can\'t make it', 'Not marked', 'Someone else']);
+    });
+
+    it('lists just today when asked for one day', function () {
+        $search = Search::factory()->for($this->user)->create();
+        Event::factory()->for($search)->marked(EventStatus::Interested)->create(['title' => 'Tonight', 'starts_on' => '2026-11-03']);
+        Event::factory()->for($search)->marked(EventStatus::Interested)->create(['title' => 'Tomorrow', 'starts_on' => '2026-11-04']);
+
+        SunshineServer::actingAs($this->user)->tool(ListPlans::class, ['days' => 1])
+            ->assertOk()
+            ->assertSee(['"through":"2026-11-03"', 'Tonight'])
+            ->assertDontSee('Tomorrow');
+    });
+
+    it('lists only today\'s upcoming events when asked for one day', function () {
+        $scan = Search::factory()->for($this->user)->create(['kind' => SearchKind::Discovery]);
+        Event::factory()->for($scan)->create(['title' => 'Tonight', 'starts_on' => '2026-11-03']);
+        Event::factory()->for($scan)->create(['title' => 'Tomorrow', 'starts_on' => '2026-11-04']);
+
+        SunshineServer::actingAs($this->user)->tool(ListUpcoming::class, ['days' => 1])
+            ->assertOk()
+            ->assertSee(['"now":"Tuesday, 2026-11-03 14:30"', 'Tonight'])
+            ->assertDontSee('Tomorrow');
     });
 });
