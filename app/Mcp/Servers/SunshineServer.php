@@ -8,6 +8,7 @@ use App\Mcp\Tools\CreateSearch;
 use App\Mcp\Tools\GetPreferences;
 use App\Mcp\Tools\GetScan;
 use App\Mcp\Tools\GetSearch;
+use App\Mcp\Tools\ListPlans;
 use App\Mcp\Tools\ListSearches;
 use App\Mcp\Tools\ListSources;
 use App\Mcp\Tools\ListUpcoming;
@@ -19,12 +20,14 @@ use Laravel\Mcp\Server\Attributes\Version;
 
 /**
  * Sunshine for Claude: the family's preferences, the pages they watch, their ad hoc searches and what their scans found,
- * acting as the user whose token it is. Served at /mcp (routes/ai.php) with a token from the Connect Claude page.
+ * acting as the user who approved it. Served at /mcp (routes/ai.php), signed in with OAuth (the Connect Claude page).
  */
 #[Name('sunshine')]
 #[Version('1.0.0')]
 #[Instructions(<<<'TEXT'
-    Sunshine finds things for a family to do. Each week an AI scout searches the web for events in the next few weeks near their home and in the other places they'd go, and opens every page they watch (their sources). It also runs ad hoc searches for any place and dates. These tools act on the real app as the family, so changes take effect straight away.
+    Sunshine finds things for a family to do. To answer what they're doing today, in the next few hours or this week, call list-plans: the events they marked Interested, with the time now where they live, their notes and the checklist for each. Answer briefly, as they may be on the go. list-upcoming with days: 1 gives everything their scans found for today, planned or not.
+
+    Each week an AI scout searches the web for events in the next few weeks near their home and in the other places they'd go, and opens every page they watch (their sources). It also runs ad hoc searches for any place and dates. These tools act on the real app as the family, so changes take effect straight away.
 
     Start with get-preferences to learn where they live, where else they'd go and what they like.
 
@@ -49,6 +52,7 @@ class SunshineServer extends Server
         GetSearch::class,
         GetScan::class,
         ListUpcoming::class,
+        ListPlans::class,
     ];
 
     protected array $resources = [];
